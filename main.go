@@ -1,25 +1,32 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"math/rand"
+	"sync"
+	"time"
+)
 
 type Cubie struct {
-	indexOrigin uint8
-	orientation uint8
+	indexOrigin byte
+	orientation byte
 }
 
 const (
-	_90  = 3
-	_180 = 2
-	_270 = 1
+	_90         = 0
+	_180        = 1
+	_270        = 2
+	_MAX_DEGREE = 3
 )
 
 const (
-	_U = 0
-	_F = 1
-	_R = 2
-	_B = 3
-	_L = 4
-	_D = 5
+	_U        = 0
+	_F        = 1
+	_R        = 2
+	_B        = 3
+	_L        = 4
+	_D        = 5
+	_MAX_FACE = 6
 )
 
 type Cubies_4 [4]*Cubie
@@ -45,101 +52,195 @@ func (cubie *Cubie) rotateCornerCounterClockwise() {
 
 //UF UR UB UL DF DR DB DL FR FL BR BL UFR URB UBL ULF DRF DFL DLB DBR
 
-func (cubies *Cubies_4) rotate(rot uint8) {
-	var tmpCubies [4]Cubie
-	for i := uint8(0); i < 4; i++ {
-		tmpCubies[i] = *cubies[(i+rot)%4]
-	}
-	for i := 0; i < 4; i++ {
-		*cubies[i] = tmpCubies[i]
-	}
-}
+type byte_4 [4]byte
 
 type Face struct {
-	edges   Cubies_4
-	corners Cubies_4
+	edges   byte_4
+	corners byte_4
 }
 
-func (face *Face) rotate(rot uint8) {
-	face.edges.rotate(rot)
-	face.corners.rotate(rot)
+func (arr byte_4) rotate(cubies []Cubie, rot byte) {
+
+	switch rot {
+	case _90:
+		rot = 3
+	case _180:
+		rot = 2
+	case _270:
+		rot = 1
+	}
+
+	result := [4]Cubie{}
+
+	for i := byte(0); i < 4; i++ {
+		result[i] = cubies[arr[(i+rot)%4]]
+	}
+	for i := byte(0); i < 4; i++ {
+		cubies[arr[i]] = result[i]
+	}
+	return
+}
+
+func (face *Face) rotate(cube *Cube, rot byte) {
+	face.edges.rotate(cube.edges[:], rot)
+	face.corners.rotate(cube.corners[:], rot)
 }
 
 type Cube struct {
 	edges   [12]Cubie
 	corners [8]Cubie
-	faces   [6]Face //U F R B L D
 }
 
-func (cube *Cube) rotateFace(faceIndex uint8, rot uint8) {
+func (cube Cube) rotateFace(faceIndex byte, rot byte) Cube {
 	switch faceIndex {
 	case _U, _D:
 		if rot != _180 {
-			for _, v := range cube.faces[faceIndex].edges {
-				v.rotateEdge()
+			for _, v := range faces[faceIndex].edges {
+				cube.edges[v].rotateEdge()
+				//print("Hello")
 			}
 		}
 	case _F, _B:
 		if rot != _180 {
-			for i, v := range cube.faces[faceIndex].corners {
+			for i, v := range faces[faceIndex].corners {
 				if i%2 == 0 {
-					v.rotateCornerClockwise()
+					cube.corners[v].rotateCornerClockwise()
 				} else {
-					v.rotateCornerCounterClockwise()
+					cube.corners[v].rotateCornerCounterClockwise()
 				}
 			}
 		}
 	}
-	cube.faces[faceIndex].rotate(rot)
+	faces[faceIndex].rotate(&cube, rot)
+	return cube
 }
 
-func (cube *Cube) getEdges(indexes []uint8) (cubies Cubies_4) {
-	for i, v := range indexes {
-		cubies[i] = &cube.edges[v]
-	}
-	return cubies
-}
-func (cube *Cube) getCorners(indexes []uint8) (cubies Cubies_4) {
-	for i, v := range indexes {
-		cubies[i] = &cube.corners[v]
-	}
-	return cubies
+type Faces [6]Face //U F R B L D
+
+func (faces *Faces) initialize() {
+	faces[0].edges = [4]byte{3, 2, 1, 0}
+	faces[1].edges = [4]byte{0, 8, 4, 9}
+	faces[2].edges = [4]byte{1, 10, 5, 8}
+	faces[3].edges = [4]byte{2, 11, 6, 10}
+	faces[4].edges = [4]byte{3, 9, 7, 11}
+	faces[5].edges = [4]byte{4, 5, 6, 7}
+
+	faces[0].corners = [4]byte{3, 2, 1, 0}
+	faces[1].corners = [4]byte{3, 0, 4, 5}
+	faces[2].corners = [4]byte{0, 1, 6, 4}
+	faces[3].corners = [4]byte{1, 2, 7, 6}
+	faces[4].corners = [4]byte{2, 3, 5, 7}
+	faces[5].corners = [4]byte{4, 6, 7, 5}
 }
 
 func (cube *Cube) initialize() {
-	cube.faces[0].edges = cube.getEdges([]uint8{3, 2, 1, 0})
-	cube.faces[1].edges = cube.getEdges([]uint8{0, 8, 4, 9})
-	cube.faces[2].edges = cube.getEdges([]uint8{1, 10, 5, 8})
-	cube.faces[3].edges = cube.getEdges([]uint8{2, 11, 6, 10})
-	cube.faces[4].edges = cube.getEdges([]uint8{3, 9, 7, 11})
-	cube.faces[5].edges = cube.getEdges([]uint8{4, 5, 6, 7})
-
-	cube.faces[0].corners = cube.getCorners([]uint8{3, 2, 1, 0})
-	cube.faces[1].corners = cube.getCorners([]uint8{3, 0, 4, 5})
-	cube.faces[2].corners = cube.getCorners([]uint8{0, 1, 6, 4})
-	cube.faces[3].corners = cube.getCorners([]uint8{1, 2, 7, 6})
-	cube.faces[4].corners = cube.getCorners([]uint8{2, 3, 5, 7})
-	cube.faces[5].corners = cube.getCorners([]uint8{4, 6, 7, 5})
-
 	for i := range cube.edges {
-		cube.edges[i].indexOrigin = uint8(i)
+		cube.edges[i].indexOrigin = byte(i)
 	}
 	for i := range cube.corners {
-		cube.corners[i].indexOrigin = uint8(i)
+		cube.corners[i].indexOrigin = byte(i)
 	}
 }
 
-func main() {
-	cube := Cube{}
-	cube.initialize()
+var visited map[Cube]bool
+var visited_lock = sync.Mutex{}
 
-	fmt.Println(cube.edges)
-	fmt.Println(cube.corners)
-	fmt.Println("--")
-	cube.rotateFace(_F, _90)
-	fmt.Println(cube.edges)
-	fmt.Println(cube.corners)
-	fmt.Println("--")
+type Qtype struct {
+	cube  *Cube
+	depth int
+}
+
+var queue chan Qtype
+
+var faces Faces
+
+func BFS(val Qtype) (Cube, int) {
+
+	for i := byte(0); i < _MAX_FACE; i++ {
+		for j := byte(0); j < _MAX_DEGREE; j++ {
+			rotatedCube := val.cube.rotateFace(i, j)
+			visited_lock.Lock()
+			if !visited[rotatedCube] {
+				visited[*val.cube] = true
+				visited_lock.Unlock()
+				select {
+				case queue <- Qtype{&rotatedCube, val.depth + 1}:
+				default:
+				}
+			} else {
+				visited_lock.Unlock()
+			}
+
+		}
+	}
+	return *val.cube, val.depth
+}
+
+func (cube *Cube) checkAllEdgesOri() bool {
+	for _, v := range cube.edges {
+		if !v.checkOrientation() {
+			return false
+		}
+	}
+	return true
+}
+
+func main() {
+	mx := 0
+	for {
+		cube := Cube{}
+		cube.initialize()
+		faces.initialize()
+		rand.Seed(time.Now().UnixNano())
+
+		for i := 0; i < 50; i++ {
+			cube = cube.rotateFace(byte(rand.Intn(_MAX_FACE)), byte(rand.Intn(_MAX_DEGREE)))
+		}
+
+		visited = make(map[Cube]bool)
+		queue = make(chan Qtype, 100000)
+		queue <- Qtype{&cube, 0}
+		visited[cube] = true
+
+		routineCount := 4
+
+		stop := make(chan byte, routineCount)
+		done := make(chan byte, routineCount*routineCount)
+
+		searcher := func() {
+		out:
+			for {
+				select {
+				case val := <-queue:
+					result, depth := BFS(val)
+					if result.checkAllEdgesOri() {
+						//fmt.Println("Found")
+						if depth > mx {
+							mx = depth
+						}
+						fmt.Println("queue len ", len(queue), "|| depth ", depth, " || ", mx)
+
+						for i := 0; i < routineCount; i++ {
+							done <- 0
+						}
+						break out
+					}
+				case <-done:
+					break out
+				}
+			}
+			stop <- 0
+			//fmt.Println("I am done")
+		}
+		for i := 0; i < routineCount; i++ {
+			go searcher()
+		}
+		for i := 0; i < routineCount; i++ {
+			<-stop
+		}
+	}
+	//fmt.Print("Done")
+	//fmt.Println(cube)
 }
 
 //EDGES
