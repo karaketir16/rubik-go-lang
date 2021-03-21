@@ -205,7 +205,7 @@ func main() {
 		routineCount := 4
 
 		stop := make(chan byte, routineCount)
-		done := make(chan byte, routineCount*routineCount)
+		done := make(chan byte, routineCount)
 
 		searcher := func() {
 		out:
@@ -221,7 +221,10 @@ func main() {
 						fmt.Println("queue len ", len(queue), "|| depth ", depth, " || ", mx)
 
 						for i := 0; i < routineCount; i++ {
-							done <- 0
+							select {
+							case done <- 0:
+							default:
+							}
 						}
 						break out
 					}
