@@ -161,15 +161,14 @@ func BFS(val Qtype) (Cube, int) {
 			rotatedCube := val.cube.rotateFace(i, j)
 			visited_lock.Lock()
 			if !visited[rotatedCube] {
-				visited[*val.cube] = true
-				visited_lock.Unlock()
+
 				select {
 				case queue <- Qtype{&rotatedCube, val.depth + 1}:
+					visited[*val.cube] = true
 				default:
 				}
-			} else {
-				visited_lock.Unlock()
 			}
+			visited_lock.Unlock()
 
 		}
 	}
