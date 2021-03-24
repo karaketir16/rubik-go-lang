@@ -29,6 +29,16 @@ const (
 	_MAX_FACE = 6
 )
 
+type faceRotPair struct {
+	face byte
+	rot  byte
+}
+
+var phase1grp []faceRotPair
+var phase2grp []faceRotPair
+var phase3grp []faceRotPair
+var phase4grp []faceRotPair
+
 type Cubies_4 [4]*Cubie
 
 func (cubie *Cubie) checkOrientation() bool {
@@ -154,23 +164,22 @@ var queue chan Qtype
 
 var faces Faces
 
-func BFS(val Qtype) (Cube, int) {
+func BFS(val Qtype, rots []faceRotPair) (Cube, int) {
+	for _, v := range rots {
+		i := v.face
+		j := v.rot
+		rotatedCube := val.cube.rotateFace(i, j)
+		visited_lock.Lock()
+		if !visited[rotatedCube] {
 
-	for i := byte(0); i < _MAX_FACE; i++ {
-		for j := byte(0); j < _MAX_DEGREE; j++ {
-			rotatedCube := val.cube.rotateFace(i, j)
-			visited_lock.Lock()
-			if !visited[rotatedCube] {
-
-				select {
-				case queue <- Qtype{&rotatedCube, val.depth + 1}:
-					visited[*val.cube] = true
-				default:
-				}
+			select {
+			case queue <- Qtype{&rotatedCube, val.depth + 1}:
+				visited[*val.cube] = true
+			default:
 			}
-			visited_lock.Unlock()
-
 		}
+		visited_lock.Unlock()
+
 	}
 	return *val.cube, val.depth
 }
@@ -210,7 +219,7 @@ func checkPhase2(cube *Cube) bool {
 	return true
 }
 
-func solvePhase(checker func(*Cube) bool, cube Cube) Cube {
+func solvePhase(checker func(*Cube) bool, cube Cube, rots []faceRotPair) Cube {
 	visited = make(map[Cube]bool)
 	queue = make(chan Qtype, 100000)
 	queue <- Qtype{&cube, 0}
@@ -227,7 +236,7 @@ func solvePhase(checker func(*Cube) bool, cube Cube) Cube {
 		for {
 			select {
 			case val := <-queue:
-				result, _ := BFS(val)
+				result, _ := BFS(val, rots)
 				if checker(&result) {
 					for i := 0; i < routineCount; i++ {
 						select {
@@ -259,6 +268,24 @@ func solvePhase(checker func(*Cube) bool, cube Cube) Cube {
 }
 
 func main() {
+
+	for i := byte(0); i < _MAX_FACE; i++ {
+		for j := byte(0); j < _MAX_DEGREE; j++ {
+			phase1grp = append(phase1grp, faceRotPair{i, j})
+		}
+	}
+	for i := byte(0); i < _MAX_FACE; i++ {
+		for j := byte(0); j < _MAX_DEGREE; j++ {
+			if i == _U || i == _D {
+				if j == _180 {
+					phase2grp = append(phase2grp, faceRotPair{i, j})
+				}
+			} else {
+				phase2grp = append(phase2grp, faceRotPair{i, j})
+			}
+		}
+	}
+
 	cube := Cube{}
 	cube.initialize()
 	faces.initialize()
@@ -268,9 +295,9 @@ func main() {
 		cube = cube.rotateFace(byte(rand.Intn(_MAX_FACE)), byte(rand.Intn(_MAX_DEGREE)))
 	}
 	fmt.Println("scrambled", cube)
-	phase1Solved := solvePhase(checkPhase1, cube)
+	phase1Solved := solvePhase(checkPhase1, cube, phase1grp)
 	fmt.Println("phase1", phase1Solved)
-	phase2Solved := solvePhase(checkPhase2, phase1Solved)
+	phase2Solved := solvePhase(checkPhase2, phase1Solved, phase2grp)
 	fmt.Println("phase2", phase2Solved)
 }
 
