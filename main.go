@@ -175,7 +175,7 @@ func BFS(val Qtype) (Cube, int) {
 	return *val.cube, val.depth
 }
 
-func (cube *Cube) checkAllEdgesOri() bool {
+func checkPhase1(cube *Cube) bool {
 	for _, v := range cube.edges {
 		if !v.checkOrientation() {
 			return false
@@ -184,66 +184,156 @@ func (cube *Cube) checkAllEdgesOri() bool {
 	return true
 }
 
-func main() {
-	mx := 0
-	for {
-		cube := Cube{}
-		cube.initialize()
-		faces.initialize()
-		rand.Seed(time.Now().UnixNano())
-
-		for i := 0; i < 50; i++ {
-			cube = cube.rotateFace(byte(rand.Intn(_MAX_FACE)), byte(rand.Intn(_MAX_DEGREE)))
-		}
-
-		visited = make(map[Cube]bool)
-		queue = make(chan Qtype, 100000)
-		queue <- Qtype{&cube, 0}
-		visited[cube] = true
-
-		routineCount := 4
-
-		stop := make(chan byte, routineCount)
-		done := make(chan byte, routineCount)
-
-		searcher := func() {
-		out:
-			for {
-				select {
-				case val := <-queue:
-					result, depth := BFS(val)
-					if result.checkAllEdgesOri() {
-						//fmt.Println("Found")
-						if depth > mx {
-							mx = depth
-						}
-						fmt.Println("queue len ", len(queue), "|| depth ", depth, " || ", mx)
-
-						for i := 0; i < routineCount; i++ {
-							select {
-							case done <- 0:
-							default:
-							}
-						}
-						break out
-					}
-				case <-done:
-					break out
-				}
-			}
-			stop <- 0
-			//fmt.Println("I am done")
-		}
-		for i := 0; i < routineCount; i++ {
-			go searcher()
-		}
-		for i := 0; i < routineCount; i++ {
-			<-stop
+func byteInSlice(a byte, list []byte) bool {
+	for _, b := range list {
+		if b == a {
+			return true
 		}
 	}
-	//fmt.Print("Done")
-	//fmt.Println(cube)
+	return false
 }
+
+func checkPhase2(cube *Cube) bool {
+	for _, v := range cube.corners {
+		if !v.checkOrientation() {
+			return false
+		}
+	}
+
+	middleLayer := []byte{0, 2, 4, 6}
+	for _, v := range middleLayer {
+		if !byteInSlice(cube.edges[v].indexOrigin, middleLayer) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func solvePhase(checker func(*Cube) bool, cube Cube) Cube {
+	visited = make(map[Cube]bool)
+	queue = make(chan Qtype, 100000)
+	queue <- Qtype{&cube, 0}
+	visited[cube] = true
+
+	routineCount := 4
+
+	stop := make(chan byte, routineCount)
+	done := make(chan byte, routineCount)
+	answer := make(chan Cube, 1)
+
+	searcher := func() {
+	out:
+		for {
+			select {
+			case val := <-queue:
+				result, _ := BFS(val)
+				if checker(&result) {
+					for i := 0; i < routineCount; i++ {
+						select {
+						case done <- 0:
+						default:
+						}
+					}
+					select {
+					case answer <- result:
+					default:
+						//someone else found
+					}
+					break out
+				}
+			case <-done:
+				break out
+			}
+		}
+		stop <- 0
+		//fmt.Println("I am done")
+	}
+	for i := 0; i < routineCount; i++ {
+		go searcher()
+	}
+	for i := 0; i < routineCount; i++ {
+		<-stop
+	}
+	return <-answer
+}
+
+func main() {
+	cube := Cube{}
+	cube.initialize()
+	faces.initialize()
+	rand.Seed(time.Now().UnixNano())
+	fmt.Println("start", cube)
+	for i := 0; i < 50; i++ {
+		cube = cube.rotateFace(byte(rand.Intn(_MAX_FACE)), byte(rand.Intn(_MAX_DEGREE)))
+	}
+	fmt.Println("scrambled", cube)
+	phase1Solved := solvePhase(checkPhase1, cube)
+	fmt.Println("phase1", phase1Solved)
+	phase2Solved := solvePhase(checkPhase2, phase1Solved)
+	fmt.Println("phase2", phase2Solved)
+}
+
+//func test() {
+//	mx := 0
+//	for {
+//		cube := Cube{}
+//		cube.initialize()
+//		faces.initialize()
+//		rand.Seed(time.Now().UnixNano())
+//
+//		for i := 0; i < 50; i++ {
+//			cube = cube.rotateFace(byte(rand.Intn(_MAX_FACE)), byte(rand.Intn(_MAX_DEGREE)))
+//		}
+//
+//		visited = make(map[Cube]bool)
+//		queue = make(chan Qtype, 100000)
+//		queue <- Qtype{&cube, 0}
+//		visited[cube] = true
+//
+//		routineCount := 4
+//
+//		stop := make(chan byte, routineCount)
+//		done := make(chan byte, routineCount)
+//
+//		searcher := func() {
+//		out:
+//			for {
+//				select {
+//				case val := <-queue:
+//					result, depth := BFS(val)
+//					if result.checkPhase1() {
+//						//fmt.Println("Found")
+//						if depth > mx {
+//							mx = depth
+//						}
+//						fmt.Println("queue len ", len(queue), "|| depth ", depth, " || ", mx)
+//
+//						for i := 0; i < routineCount; i++ {
+//							select {
+//							case done <- 0:
+//							default:
+//							}
+//						}
+//						break out
+//					}
+//				case <-done:
+//					break out
+//				}
+//			}
+//			stop <- 0
+//			//fmt.Println("I am done")
+//		}
+//		for i := 0; i < routineCount; i++ {
+//			go searcher()
+//		}
+//		for i := 0; i < routineCount; i++ {
+//			<-stop
+//		}
+//	}
+//	//fmt.Print("Done")
+//	//fmt.Println(cube)
+//}
 
 //EDGES
 //0 U
