@@ -29,15 +29,15 @@ const (
 	_MAX_FACE = 6
 )
 
-type faceRotPair struct {
+type Move struct {
 	face byte
 	rot  byte
 }
 
-var phase1grp []faceRotPair
-var phase2grp []faceRotPair
-var phase3grp []faceRotPair
-var phase4grp []faceRotPair
+var phase1grp []Move
+var phase2grp []Move
+var phase3grp []Move
+var phase4grp []Move
 
 type Cubies_4 [4]*Cubie
 
@@ -155,25 +155,49 @@ func (cube *Cube) initialize() {
 var visited map[Cube]bool
 var visited_lock = sync.Mutex{}
 
+type MoveTreeNode struct {
+	move   Move
+	parent *MoveTreeNode
+}
+
+func reverseMoves(slice []Move) {
+	//https://stackoverflow.com/a/38081920/8328237
+	//https://stackoverflow.com/a/53736310/8328237
+	for i, j := 0, len(slice)-1; i < j; i, j = i+1, j-1 {
+		slice[i], slice[j] = slice[j], slice[i]
+	}
+}
+
+func (node *MoveTreeNode) getMoves() (moves []Move) {
+	for node != nil {
+		moves = append(moves, node.move)
+		node = node.parent
+	}
+	reverseMoves(moves)
+	return
+}
+
 type Qtype struct {
-	cube  *Cube
-	depth int
+	cube     *Cube
+	depth    int
+	lastMove *MoveTreeNode
 }
 
 var queue chan Qtype
 
 var faces Faces
 
-func BFS(val Qtype, rots []faceRotPair) (Cube, int) {
-	for _, v := range rots {
-		i := v.face
-		j := v.rot
+func BFS(val Qtype, validMoves []Move) (Cube, int) {
+	for _, move := range validMoves {
+		i := move.face
+		j := move.rot
 		rotatedCube := val.cube.rotateFace(i, j)
 		visited_lock.Lock()
 		if !visited[rotatedCube] {
-
+			node := &MoveTreeNode{move, val.lastMove}
+			qtype := Qtype{&rotatedCube, val.depth + 1, node}
 			select {
-			case queue <- Qtype{&rotatedCube, val.depth + 1}:
+			case queue <- qtype:
 				visited[*val.cube] = true
 			default:
 			}
@@ -219,24 +243,24 @@ func checkPhase2(cube *Cube) bool {
 	return true
 }
 
-func solvePhase(checker func(*Cube) bool, cube Cube, rots []faceRotPair) Cube {
+func solvePhase(checker func(*Cube) bool, cube Cube, moves []Move) Qtype {
 	visited = make(map[Cube]bool)
 	queue = make(chan Qtype, 100000)
-	queue <- Qtype{&cube, 0}
+	queue <- Qtype{&cube, 0, nil}
 	visited[cube] = true
 
 	routineCount := 4
 
 	stop := make(chan byte, routineCount)
 	done := make(chan byte, routineCount)
-	answer := make(chan Cube, 1)
+	answer := make(chan Qtype, 1)
 
 	searcher := func() {
 	out:
 		for {
 			select {
 			case val := <-queue:
-				result, _ := BFS(val, rots)
+				result, _ := BFS(val, moves)
 				if checker(&result) {
 					for i := 0; i < routineCount; i++ {
 						select {
@@ -245,7 +269,7 @@ func solvePhase(checker func(*Cube) bool, cube Cube, rots []faceRotPair) Cube {
 						}
 					}
 					select {
-					case answer <- result:
+					case answer <- val:
 					default:
 						//someone else found
 					}
@@ -271,17 +295,17 @@ func main() {
 
 	for i := byte(0); i < _MAX_FACE; i++ {
 		for j := byte(0); j < _MAX_DEGREE; j++ {
-			phase1grp = append(phase1grp, faceRotPair{i, j})
+			phase1grp = append(phase1grp, Move{i, j})
 		}
 	}
 	for i := byte(0); i < _MAX_FACE; i++ {
 		for j := byte(0); j < _MAX_DEGREE; j++ {
 			if i == _U || i == _D {
 				if j == _180 {
-					phase2grp = append(phase2grp, faceRotPair{i, j})
+					phase2grp = append(phase2grp, Move{i, j})
 				}
 			} else {
-				phase2grp = append(phase2grp, faceRotPair{i, j})
+				phase2grp = append(phase2grp, Move{i, j})
 			}
 		}
 	}
@@ -296,9 +320,9 @@ func main() {
 	}
 	fmt.Println("scrambled", cube)
 	phase1Solved := solvePhase(checkPhase1, cube, phase1grp)
-	fmt.Println("phase1", phase1Solved)
-	phase2Solved := solvePhase(checkPhase2, phase1Solved, phase2grp)
-	fmt.Println("phase2", phase2Solved)
+	fmt.Println("phase1", *phase1Solved.cube, phase1Solved.depth)
+	phase2Solved := solvePhase(checkPhase2, *phase1Solved.cube, phase2grp)
+	fmt.Println("phase2", *phase2Solved.cube, phase2Solved.depth)
 }
 
 //func test() {
